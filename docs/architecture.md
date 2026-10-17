@@ -2,6 +2,8 @@
 
 Initial review: 2026-10-17. The first milestone is a working local PWA. Cloud provisioning, synchronization, and historical migration follow after offline verification.
 
+Phase 2 implementation update (2026-10-17): the Worker, D1 schema, owner-only Access policy and foreground sync are implemented. The owner confirmed Free plans and successful production sign-in/sync; separate cloud databases are provisioned. Public shell/protected API probes pass. Real iPhone offline verification and historical migration remain rollout checks.
+
 ## Requirements and boundaries
 
 Single user, primarily an installed iPhone PWA in a garage without connectivity. React, TypeScript, Vite, Tailwind, vite-plugin-pwa/Workbox and Dexie. Default estimates use 9.6 kW and CAD 0.203/kWh; each session keeps its own assumptions. Payments, multiple vehicles, actual TOU schedules and automatic rate retrieval are outside scope. No paid resources or automatic production deployments.
@@ -12,7 +14,7 @@ The UI reads IndexedDB. Start, stop, edits and deletions commit in a Dexie read/
 
 Session fields: UUID `id`, UTC ISO `startAt`, nullable `endAt`, `state` (`active`, `incomplete`, `completed`, `deleted`), `powerWatts`, `rateMicrosPerKwh` (millionths of CAD), `createdAt`, `updatedAt`, local `revision`, and last acknowledged `serverRevision`. Tombstones retain deletion history. Derived duration, energy and price are recalculated rather than persisted as competing truths. Sum unrounded rational cost numerators, then round for display; do not sum rounded session prices.
 
-Outbox fields: UUID mutation ID, session ID, local revision and base server revision. Settings hold default watts and rate, separately from session snapshots. A later sync schema will add server acknowledgements and conflict snapshots without erasing pending local edits. JSON exports are versioned and include settings, all sessions (including tombstones) and pending mutations; CSV is a human-readable export of visible records.
+Outbox fields: UUID mutation ID, session ID, local revision, base server revision and session snapshot. Immediately before first upload, persist its exact request envelope; retries reuse that envelope and ID. IndexedDB version 2 adds cloud status/lease and conflict snapshots. Settings are device-local default watts and rate; session assumptions synchronize with each session. JSON export version 2 includes settings, all sessions (including tombstones), pending mutations and conflicts; CSV is a human-readable export of visible records.
 
 Store UTC instants, display/edit device-local time. Require explicit end dates for manual sessions spanning midnight. Reject nonexistent or ambiguous local times instead of silently adjusting them; future import uses explicit America/Toronto conversion and reports DST ambiguity. Attribute a session to the month/year of its local start time, including cross-midnight sessions.
 
@@ -38,7 +40,7 @@ Use Free plans only and verify the account's plan before provisioning. D1 Free h
 
 `GET /api/snapshot` downloads the complete small dataset, tombstones and server revisions. `POST /api/mutations` accepts a stable mutation ID, base server revision and validated session snapshot. Atomically deduplicate the mutation ID and compare-and-swap the server revision in D1. An applied retry returns its original acknowledgement. A stale revision returns 409 and the remote snapshot; retain the local version and present a choice. Explicit conflict resolution creates a new mutation based on the returned revision.
 
-Snapshot pulls must never overwrite rows with pending mutations. Acknowledge only the exact outbox item sent, so edits made during an in-flight request remain pending. Serialize per-session mutations; recover an uncertain request by retrying its same ID. Keep remote tombstones indefinitely for this small dataset. Retry after network errors without clearing outbox items. Download on a new device only after authentication. Decide a cross-device active-session conflict explicitly; preserve both snapshots rather than discard one.
+Snapshot pulls never overwrite rows with pending mutations. Retry uploads before pulling snapshots so a lost acknowledgement is not mistaken for a remote conflict. Acknowledge only the exact item sent, so edits made during an in-flight request remain pending. Serialize queued revisions per session, with a persistent per-database lease to prevent simultaneous uploads across views. D1 receipt triggers atomically compare revisions and write sessions; a unique index permits only one cloud active session. Keep remote tombstones and receipts indefinitely for this small dataset. Conflicts block the affected session’s queue until explicitly reviewed. Cross-device active conflicts offer the cloud version or preservation of both with this device’s charge marked incomplete.
 
 ## Minimal project structure
 

@@ -8,29 +8,40 @@
   },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && tsc -p tsconfig.worker.json && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run",
-    "test:browser": "playwright test"
+    "test:browser": "playwright test",
+    "cf:types": "wrangler types worker/env.d.ts --include-runtime=false --strict-vars=false",
+    "cf:local": "wrangler dev --local",
+    "cf:migrate:local": "wrangler d1 migrations apply DB --local",
+    "cf:configure": "node scripts/configure-cloud.mjs",
+    "cf:check": "wrangler deploy --config .local/wrangler.jsonc --env production --dry-run",
+    "cf:migrate:production": "wrangler d1 migrations apply DB --config .local/wrangler.jsonc --env production --remote",
+    "cf:deploy": "wrangler deploy --config .local/wrangler.jsonc --env production"
   },
   "dependencies": {
-    "react": "19.3.1",
-    "react-dom": "19.3.1",
     "dexie": "4.4.6",
-    "dexie-react-hooks": "4.4.0"
+    "dexie-react-hooks": "4.4.0",
+    "jose": "6.2.12",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "5.20261016.1",
+    "@playwright/test": "1.64.1",
+    "@tailwindcss/vite": "4.3.3",
+    "@types/node": "26.6.5",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
-    "@types/node": "26.6.5",
     "@vitejs/plugin-react": "6.1.2",
-    "@tailwindcss/vite": "4.3.3",
+    "fake-indexeddb": "6.2.6",
+    "miniflare": "5.20261012.1-beta",
     "tailwindcss": "4.3.3",
     "typescript": "7.0.2",
     "vite": "8.3.4",
     "vite-plugin-pwa": "2.0.0",
     "vitest": "5.0.5",
-    "fake-indexeddb": "6.2.6",
-    "@playwright/test": "1.64.1"
+    "wrangler": "4.151.1"
   }
 }

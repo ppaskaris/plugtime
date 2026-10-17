@@ -1,11 +1,11 @@
 import { db, getSettings, type PlugTimeDatabase } from './db';
-import { calculate, costCad, localInput, type Mutation, type Session, type Settings } from './domain';
+import { calculate, costCad, localInput, type Mutation, type Session, type Settings, type SyncConflict } from './domain';
 
-export interface Backup { app: 'PlugTime'; schemaVersion: 1; exportedAt: string; settings: Settings; sessions: Session[]; outbox: Mutation[] }
+export interface Backup { app: 'PlugTime'; schemaVersion: 2; exportedAt: string; settings: Settings; sessions: Session[]; outbox: Mutation[]; conflicts: SyncConflict[] }
 export function makeBackup(database: PlugTimeDatabase = db): Promise<Backup> {
-  return database.transaction('r', database.sessions, database.settings, database.outbox, async () => ({
-    app: 'PlugTime', schemaVersion: 1, exportedAt: new Date().toISOString(), settings: await getSettings(database),
-    sessions: await database.sessions.toArray(), outbox: await database.outbox.toArray(),
+  return database.transaction('r', database.sessions, database.settings, database.outbox, database.conflicts, async () => ({
+    app: 'PlugTime', schemaVersion: 2, exportedAt: new Date().toISOString(), settings: await getSettings(database),
+    sessions: await database.sessions.toArray(), outbox: await database.outbox.toArray(), conflicts: await database.conflicts.toArray(),
   }));
 }
 const quote = (value: unknown) => `"${String(value ?? '').replaceAll('"', '""')}"`;

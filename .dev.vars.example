@@ -1,0 +1,5 @@
+# Copy to ignored .dev.vars for local authenticated API testing.
+# No authentication bypass exists. Missing values disable cloud APIs.
+ACCESS_TEAM_DOMAIN=https://your-team.cloudflareaccess.com
+ACCESS_AUDIENCE=your-access-application-audience
+ALLOWED_EMAIL=you@example.com

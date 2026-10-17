@@ -2,8 +2,9 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { db, deleteSession, getSettings, saveSession, saveSettings, startSession, stopSession } from './db';
-import { cad, calculate, costCad, defaults, durationLabel, localInput, parseLocal, periodGroups, summarize, type Session, type Settings } from './domain';
+import { cad, calculate, costCad, defaults, durationLabel, localInput, MIN_SESSION_MS, parseLocal, periodGroups, summarize, type Session, type Settings } from './domain';
 import { download, historyCsv, makeBackup } from './exports';
+import { CloudPanel } from './CloudPanel';
 
 const dateLabel = (iso: string) => new Date(iso).toLocaleString('en-CA', { dateStyle: 'medium', timeStyle: 'short' });
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : 'Could not save. Please try again.';
@@ -65,7 +66,7 @@ function SettingsPanel({ settings, act }: { settings: Settings; act: (job: () =>
       <p className="muted">These defaults apply to new sessions. Consumption and cost assume continuous charging and are estimates.</p>
       <button>Save defaults</button>
     </form>
-    <div className="divider"><h3>Your data</h3><p>Saved on this device. Cloud backup is not configured yet. Export JSON regularly to keep a complete copy.</p>
+    <div className="divider"><h3>Your data</h3><p>Saved on this device. Check Cloud backup below for synchronization status. Export JSON regularly to keep a complete copy.</p>
       <div className="actions">
         <button onClick={() => void act(async () => { const backup = await makeBackup(); download('plugtime-backup.json', JSON.stringify(backup, null, 2), 'application/json'); }, 'JSON export prepared. Save it somewhere safe.')}>Export JSON</button>
         <button onClick={() => void act(async () => { const backup = await makeBackup(); download('plugtime-history.csv', historyCsv(backup.sessions), 'text/csv;charset=utf-8'); }, 'CSV export prepared.')}>Export CSV</button>
@@ -110,14 +111,15 @@ export function App() {
       navigator.serviceWorker?.removeEventListener('controllerchange', workerUpdate);
     };
   }, []);
-  async function act(job: () => Promise<unknown>, message: string) {
+  async function act<T>(job: () => Promise<T>, message: string | ((result: T) => string)) {
     if (busyRef.current) return;
     busyRef.current = true; setBusy(true); setError(''); setNotice('');
-    try { await job(); setNotice(message); } catch (e) { setError(errorMessage(e)); }
+    try { const result = await job(); setNotice(typeof message === 'function' ? message(result) : message); } catch (e) { setError(errorMessage(e)); }
     finally { busyRef.current = false; setBusy(false); }
   }
   const sessions = data?.sessions.filter(s => s.state !== 'deleted') ?? [];
   const active = sessions.find(s => s.state === 'active');
+  const lastCharge = sessions.find(s => s.state === 'completed');
   const settings = data?.settings ?? defaults;
   const total = summarize(sessions);
   const estimate = active ? calculate(active, now) : undefined;
@@ -135,7 +137,12 @@ export function App() {
             {active && estimate ? <>
               <p>Started {dateLabel(active.startAt)}</p><div className="timer">{durationLabel(estimate.durationMs)}</div>
               <p>{estimate.energyKwh.toFixed(2)} kWh · {cad(costCad(estimate.costNumerator))} CAD estimated</p>
-              <button className="primary large stop" disabled={busy} onClick={() => void act(() => stopSession(active), 'Charging stopped and saved on this device.')}>Stop Charging</button>
+              <button className="primary large stop" disabled={busy} onClick={() => void act(() => stopSession(active), stopped => stopped.state === 'deleted' ? 'Charge discarded: under one minute. It won’t count in your history or statistics.' : 'Charging stopped and saved on this device.')}>Stop Charging</button>
+              <p className="muted">Charges under one minute are automatically discarded when stopped.</p>
+              <button className="text-button danger" disabled={busy} onClick={() => {
+                if (Date.now() - Date.parse(active.startAt) >= MIN_SESSION_MS && !window.confirm('Cancel this charge? It will not count in your history or statistics.')) return;
+                void act(() => deleteSession(active), 'Charge cancelled. It won’t count in your history or statistics.');
+              }}>Cancel charge</button>
               <button className="text-button" onClick={() => setEditor(active)}>Correct timestamps</button>
             </> : <>
               <h2>Plug in. Tap. You’re set.</h2><p>Your start time is saved as soon as you tap.</p>
@@ -144,7 +151,10 @@ export function App() {
             </>}
           </section>
           <button className="text-button manual-button" onClick={() => setEditor(null)}>Add a session manually</button>
-          {sessions.find(s => s.state === 'completed') && <section className="card recent"><h2>Last charge</h2>{renderSession(sessions.find(s => s.state === 'completed')!)}</section>}
+          {lastCharge && <section className="card recent"><h2>Last charge</h2>{renderSession(lastCharge)}<button className="text-button danger" disabled={busy} onClick={() => {
+            if (!window.confirm('Delete the last charge? It will be removed from your history and statistics.')) return;
+            void act(() => deleteSession(lastCharge), 'Last charge deleted on this device.');
+          }}>Delete last charge</button></section>}
         </>}
         {tab === 'history' && <>
           <div className="page-heading"><p className="eyebrow">ALL ON THIS DEVICE</p><h1>Charging history</h1><p>{sessions.length} {sessions.length === 1 ? 'session' : 'sessions'} recorded</p></div>
@@ -161,7 +171,7 @@ export function App() {
           {[false, true].map(yearly => <section className="card" key={String(yearly)}><h2>{yearly ? 'By year' : 'By month'}</h2><p className="muted">Grouped by session start date in your device’s timezone.</p><div className="period-list">{periodGroups(sessions, yearly).map(p => <div className="period-row" key={p.period}><strong>{p.period}</strong><span>{p.count} charges · {durationLabel(p.durationMs)}<br />{p.energyKwh.toFixed(2)} kWh · {cad(costCad(p.costNumerator))} CAD est.</span></div>)}{!total.count && <p>No completed sessions yet.</p>}</div></section>)}
           <SettingsPanel settings={settings} act={act} />
         </>}
-        <p className="cloud-status">Cloud backup not configured · {data.pending} pending local {data.pending === 1 ? 'change' : 'changes'}</p>
+        <CloudPanel />
       </>}
       {needRefresh && <div className="card update"><p>A PlugTime update is ready.{active || editor !== undefined ? ' It can be installed after you finish charging and close the editor.' : ''}</p><button disabled={!!active || editor !== undefined || busy} onClick={() => void updateServiceWorker(true)}>Install update</button></div>}
     </main>

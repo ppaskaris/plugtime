@@ -6,7 +6,7 @@ Status: not yet run on a physical iPhone. Desktop browser tests are supporting e
 2. Enable Airplane Mode and explicitly turn Wi-Fi off. Launch from the Home Screen. Confirm the UI opens and says Offline.
 3. Tap Start Charging once. Confirm the saved-on-device message and start timestamp. Try rapid repeated taps; only one session may exist.
 4. Switch apps, lock the phone and leave it suspended. Return and confirm elapsed time derives from the original timestamp.
-5. Force-close PlugTime while offline. Relaunch from the Home Screen. The active session must still be present. Tap Stop Charging and confirm a completed history record.
+5. Force-close PlugTime while offline. Relaunch from the Home Screen. The active session must still be present. After at least one minute from the original start, tap Stop Charging and confirm a completed history record. Separately verify an immediate start/stop is discarded, Cancel charge immediately undoes a start during the first minute, cancelling after a minute asks for confirmation, and Delete last charge removes a completed charge only after confirmation. None of the discarded charges should count in statistics.
 6. Force-close and relaunch again offline. Confirm start/end timestamps, elapsed time, estimated energy and CAD cost remain correct. Record any missing shell assets or data.
 7. Edit the end to a later date, including a session crossing midnight. Confirm corrections persist after relaunch. Try an end before the start and verify it is rejected without changing history.
 8. Add a past session with no end time. Confirm it says Incomplete and does not become the live charging timer. Complete it after the fact. Delete a synthetic session and verify the confirmation and persistent removal.

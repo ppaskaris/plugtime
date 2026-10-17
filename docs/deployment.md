@@ -1,21 +1,63 @@
-# Deployment preparation
+# Manual Cloudflare deployment
 
-The public [GitHub repository](https://github.com/ppaskaris/plugtime) is connected as `origin`. No Cloudflare resources have been created by this milestone. Hosting remains manually controlled. The local application requires no environment variables, database or Access session.
+Phase 2 uses Workers with Static Assets, D1 and Cloudflare Access. The owner confirmed Workers and Zero Trust Free plans on 2026-10-17. Separate development and production D1 databases are provisioned and migrated. Production is deployed manually; no Git-triggered deployment or paid feature has been enabled. Historical source files have not been uploaded by the agent.
 
-## Phase 2 setup order
+## Local development and tests
 
-1. Verify the intended Cloudflare account is on Free plans for Workers/D1/Zero Trust. Do not enable a paid plan or automatic upgrades. Confirm availability and current limits in the dashboard.
-2. Choose a stable HTTPS hostname. Browser storage and service-worker scope belong to an origin; moving hostnames later requires export/import or authenticated cloud recovery.
-3. Add a Worker entry point, install a pinned Wrangler dev dependency, and add a `wrangler.jsonc` with Static Assets `directory: "./dist"`, `binding: "ASSETS"`, `not_found_handling: "single-page-application"` and `run_worker_first: ["/api", "/api/*"]`. Use the deployment day's supported compatibility date.
-4. Add SQL migrations for sessions/revisions, tombstones and idempotent mutation receipts. Create separate development and production D1 databases/bindings. Apply/test migrations locally first, then explicitly to the selected remote environment. Do not bind local development to production data.
-5. Configure Access on the API paths and Cloudflare as the identity provider with account membership restriction plus an owner-only identity policy. Verify the claimed identity format. Set Access issuer/team domain, audience and allowed identity as Worker configuration. They must not be `VITE_*` frontend settings. Tokens and private account configuration belong in ignored `.dev.vars`/Wrangler secrets, never committed examples.
-6. Validate JWT signature, audience, issuer, expiry and owner identity before querying D1. Reject unauthorized requests and malformed inputs, require same-origin state-changing requests, and disable or protect alternate workers.dev/preview URLs. Do not cache API responses or redirect HTML in Workbox.
-7. Run synthetic API and sync tests and unauthenticated probes. Deploy manually only after these pass. Upload private history only after authorization and conflict behavior have been verified.
+```sh
+npm ci
+npm run cf:types
+npm run cf:migrate:local
+npm run build
+npm run cf:local
+```
 
-Wrangler configuration, real environment examples and migration scripts will be added with the functioning Phase 2 backend, rather than include untested deployment commands now. Consult the official sources linked in [architecture.md](architecture.md) when implementing them.
+`cf:local` serves the production shell and Worker on localhost using local D1. The public `wrangler.jsonc` contains deliberate placeholder database IDs and empty Access values. The API fails closed when these are missing; the offline application still works. `.dev.vars.example` documents the server-side variables. There is no local authentication bypass. Tests use a local signing key and Miniflare to validate JWT rules and D1 independently.
 
-## Connecting GitHub later
+## Account configuration
 
-Once the public GitHub repository exists, Cloudflare Workers & Pages → select the Worker → Settings → Builds → connect the GitHub repository. Choose `main` and the npm build command. Keep automatic production deployments disabled during validation; manual Wrangler deployments remain the initial workflow. Do not connect deployment until the Worker, D1 environments and Access configuration are tested. Confirm the dashboard's current Git integration settings against [Cloudflare's GitHub integration documentation](https://developers.cloudflare.com/workers/ci-cd/builds/git-integration/github-integration/).
+Create the Workers hostname and enable Zero Trust on Free plans first. Configure Cloudflare as the identity provider with account membership restriction. Create two self-hosted Access applications, one for each environment’s `<hostname>/api` path, including its subpaths. Restrict each policy to the exact owner email and the Cloudflare login method. Keep the app shell public. Disable preview URLs; server JWT validation remains mandatory for any alternate entry point.
 
-Keep the public repository free of local source records, exported backups, deployment tokens, account IDs tied to private setup and personal configuration. GitHub CI can run the synthetic tests/build without access to personal data or cloud secrets.
+The Worker validates JWT signature, issuer, audience, expiry and owner email before database access. API writes require the app’s Origin; JSON bodies have a 16 KiB limit. API responses use no-store. `/api/login` redirects to the app only after authentication. `/api/config` returns only an enabled flag and is Access-protected on the deployed host.
+
+Private identifiers belong in ignored `.local/cloudflare.json`:
+
+```json
+{
+  "accountId": "your-account-id",
+  "teamDomain": "https://your-team.cloudflareaccess.com",
+  "allowedEmail": "you@example.com",
+  "developmentDatabaseId": "your-development-database-id",
+  "productionDatabaseId": "your-production-database-id",
+  "developmentAudience": "your-development-access-audience",
+  "productionAudience": "your-production-access-audience"
+}
+```
+
+`npm run cf:configure` creates ignored `.local/wrangler.jsonc` with the correct paths and separate bindings. Tokens stay in Wrangler’s credential storage; the file above contains deployment settings only. Never commit these private files or expose server variables through `VITE_*`. This installation’s identifiers and rollout notes are under `.local/`.
+
+## Production commands
+
+```sh
+npm run cf:configure
+npm test
+npm run build
+npm run test:browser
+npm run cf:check
+npm run cf:migrate:production
+npm run cf:deploy
+```
+
+`cf:check` bundles without deploying. Production migrations/deployment explicitly target production. For development-cloud operations use `--config .local/wrangler.jsonc --env ''`; do not use `--remote` during ordinary local development. Do not enable paid plans or automatic upgrades. Check Free quotas before expanding usage.
+
+Before uploading personal records, verify shell/manifest/service worker return 200 publicly, API paths redirect to Access, the intended identity can synchronize, and unauthorized identities are denied. Login HTML must not be treated as JSON success. Recheck the iPhone procedure on HTTPS. Localhost, LAN and deployed HTTPS origins have separate browser stores; moving to production does not automatically move preview records.
+
+## Recovery and rollback
+
+Use `npx wrangler versions list --config .local/wrangler.jsonc --env production` and `npx wrangler rollback <version-id> --config .local/wrangler.jsonc --env production` after reviewing version compatibility. Worker rollback does not undo D1 migrations. Preserve D1 and mutation receipts; never delete a database to repair sync. Retain independent JSON exports and, before destructive schema changes, a D1 export in ignored `exports/`.
+
+Sync uses a persistent two-minute lease to avoid simultaneous uploads across views. If a tab is terminated mid-sync, its successor retries when the lease expires. Each API request has a 15-second timeout, and its exact persisted envelope is replayed after uncertain outcomes. No iOS background execution is required.
+
+## GitHub integration
+
+Source lives on GitHub; deployment stays manual until real-device checks pass. If enabling Cloudflare Builds later, connect the repository, select `main`, use the npm build command and explicitly set production database/Access settings. Preserve the private settings workflow or configure equivalent CI secrets. Consult [Cloudflare’s GitHub integration documentation](https://developers.cloudflare.com/workers/ci-cd/builds/git-integration/github-integration/) before enabling automatic deployment.

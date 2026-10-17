@@ -1,13 +1,17 @@
 import Dexie, { type EntityTable } from 'dexie';
-import { defaults, validateAssumptions, validateSession, type Assumptions, type Mutation, type Session, type Settings } from './domain';
+import { newId } from './ids';
+import { defaults, MIN_SESSION_MS, validateAssumptions, validateSession, type Assumptions, type Mutation, type Session, type Settings, type CloudState, type SyncConflict } from './domain';
 
 export class PlugTimeDatabase extends Dexie {
   sessions!: EntityTable<Session, 'id'>;
   outbox!: EntityTable<Mutation, 'id'>;
   settings!: EntityTable<Settings, 'id'>;
+  cloud!: EntityTable<CloudState, 'id'>;
+  conflicts!: EntityTable<SyncConflict, 'sessionId'>;
   constructor(name = 'plugtime') {
     super(name);
     this.version(1).stores({ sessions: 'id, startAt, state, &activeKey', outbox: 'id, sessionId', settings: 'id' });
+    this.version(2).stores({ cloud: 'id', conflicts: 'sessionId' });
   }
 }
 export const db = new PlugTimeDatabase();
@@ -24,7 +28,7 @@ async function writeSession(session: Session, database: PlugTimeDatabase) {
   if (record.state === 'active') record.activeKey = 'active';
   else delete record.activeKey;
   await database.sessions.put(record);
-  await database.outbox.add({ id: crypto.randomUUID(), sessionId: record.id, localRevision: record.revision,
+  await database.outbox.add({ id: newId(), sessionId: record.id, localRevision: record.revision,
     baseServerRevision: record.serverRevision, snapshot: record });
   return record;
 }
@@ -33,26 +37,38 @@ export async function startSession(database = db) {
     if (await database.sessions.where('activeKey').equals('active').first()) throw new Error('A charging session is already active.');
     const assumptions = await getSettings(database);
     const now = new Date().toISOString();
-    return writeSession({ ...assumptions, id: crypto.randomUUID(), startAt: now, endAt: null, state: 'active',
+    return writeSession({ ...assumptions, id: newId(), startAt: now, endAt: null, state: 'active',
       createdAt: now, updatedAt: now, revision: 1, serverRevision: 0 }, database);
   });
 }
 export type SessionInput = Pick<Session, 'startAt' | 'endAt' | 'powerWatts' | 'rateMicrosPerKwh'>;
 export async function saveSession(input: SessionInput, existing?: Pick<Session, 'id' | 'revision'>, database = db) {
+  if (input.endAt && Date.parse(input.endAt) - Date.parse(input.startAt) < MIN_SESSION_MS)
+    throw new Error('A saved charge must be at least one minute. Correct the timestamps or cancel/delete this charge.');
   return database.transaction('rw', database.sessions, database.outbox, async () => {
     const current = existing ? await database.sessions.get(existing.id) : undefined;
     if (existing && (!current || current.revision !== existing.revision || current.state === 'deleted'))
       throw new Error('This session changed in another view. Close and reopen it before editing.');
     const now = new Date().toISOString();
     const state = input.endAt ? 'completed' : current?.state === 'active' ? 'active' : 'incomplete';
-    return writeSession({ id: current?.id ?? crypto.randomUUID(), createdAt: current?.createdAt ?? now,
+    return writeSession({ id: current?.id ?? newId(), createdAt: current?.createdAt ?? now,
       serverRevision: current?.serverRevision ?? 0, ...input, state, updatedAt: now,
       revision: (current?.revision ?? 0) + 1 }, database);
   });
 }
 export async function stopSession(session: Session, database = db) {
-  if (session.state !== 'active') throw new Error('This session is not active.');
-  return saveSession({ ...session, endAt: new Date().toISOString() }, session, database);
+  return database.transaction('rw', database.sessions, database.outbox, async () => {
+    const current = await database.sessions.get(session.id);
+    if (!current || current.revision !== session.revision || current.state !== 'active')
+      throw new Error('This session changed. Close and reopen it before stopping.');
+    const now = new Date().toISOString();
+    const elapsed = Date.parse(now) - Date.parse(current.startAt);
+    if (elapsed < 0) throw new Error('The current time is before the start. Correct the start time before stopping.');
+    // Keep a tombstone so an accidental charge cannot reappear after future sync.
+    const discarded = elapsed < MIN_SESSION_MS;
+    return writeSession({ ...current, state: discarded ? 'deleted' : 'completed', endAt: discarded ? null : now,
+      updatedAt: now, revision: current.revision + 1 }, database);
+  });
 }
 export async function deleteSession(session: Session, database = db) {
   return database.transaction('rw', database.sessions, database.outbox, async () => {

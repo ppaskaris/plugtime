@@ -47,6 +47,11 @@ header { display: flex; justify-content: space-between; align-items: center; pad
 .session-estimate strong { color: var(--text); }
 .session-estimate .unfinished { color: #946221; }
 .cloud-status { text-align: center; font-size: .75rem; color: var(--muted); margin: 28px 0 12px; }
+.cloud-panel { margin-top: 28px; }
+.cloud-panel > p { margin-top: 10px; font-size: .85rem; }
+.signin { display: inline-flex; align-items: center; min-height: 48px; color: var(--text); text-decoration: underline; }
+.conflict { margin-top: 20px; }
+.conflict p { margin-top: 10px; font-size: .85rem; overflow-wrap: anywhere; }
 nav { position: fixed; bottom: 0; left: 0; right: 0; display: flex; justify-content: center; gap: 8px; border-top: 1px solid var(--border); padding: 12px 12px calc(12px + env(safe-area-inset-bottom)); background: var(--surface); z-index: 2; }
 nav button { border: 0; padding: 12px; font-size: .8rem; color: var(--muted); }
 nav button[aria-current] { background: var(--soft); color: var(--text); }

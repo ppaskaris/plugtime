@@ -21,8 +21,12 @@ export interface Mutation {
   localRevision: number;
   baseServerRevision: number;
   snapshot: Session;
+  upload?: { id: string; baseServerRevision: number; snapshot: Session };
 }
+export interface SyncConflict { sessionId: string; remote: Session | null; active: Session | null; reason: string }
+export interface CloudState { id: 'cloud'; enabled?: boolean; status?: 'idle' | 'syncing' | 'offline' | 'auth' | 'error' | 'conflict'; lastSuccessAt?: string; message?: string; leaseOwner?: string; leaseUntil?: number }
 export const defaults: Settings = { id: 'defaults', powerWatts: 9600, rateMicrosPerKwh: 203000 };
+export const MIN_SESSION_MS = 60_000;
 
 export function validateAssumptions(value: Assumptions) {
   if (!Number.isSafeInteger(value.powerWatts) || value.powerWatts <= 0 || value.powerWatts > 1_000_000)
