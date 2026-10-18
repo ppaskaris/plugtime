@@ -54,6 +54,8 @@ Before uploading personal records, verify shell/manifest/service worker return 2
 
 ## Recovery and rollback
 
+Phase 3 adds local JSON recovery and a completed additive historical migration. See [migration and recovery](importing.md). Private D1 backups and operational verification remain in ignored `.local/`; no personal history is included in static assets. The deployment uses the existing Free plans and manual workflow, with no new schema or service.
+
 Use `npx wrangler versions list --config .local/wrangler.jsonc --env production` and `npx wrangler rollback <version-id> --config .local/wrangler.jsonc --env production` after reviewing version compatibility. Worker rollback does not undo D1 migrations. Preserve D1 and mutation receipts; never delete a database to repair sync. Retain independent JSON exports and, before destructive schema changes, a D1 export in ignored `exports/`.
 
 Sync uses a persistent two-minute lease to avoid simultaneous uploads across views. If a tab is terminated mid-sync, its successor retries when the lease expires. Each API request has a 15-second timeout, and its exact persisted envelope is replayed after uncertain outcomes. No iOS background execution is required.

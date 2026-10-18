@@ -52,7 +52,8 @@ export async function saveSession(input: SessionInput, existing?: Pick<Session, 
     const now = new Date().toISOString();
     const state = input.endAt ? 'completed' : current?.state === 'active' ? 'active' : 'incomplete';
     return writeSession({ id: current?.id ?? newId(), createdAt: current?.createdAt ?? now,
-      serverRevision: current?.serverRevision ?? 0, ...input, state, updatedAt: now,
+      serverRevision: current?.serverRevision ?? 0, startAt: input.startAt, endAt: input.endAt,
+      powerWatts: input.powerWatts, rateMicrosPerKwh: input.rateMicrosPerKwh, state, updatedAt: now,
       revision: (current?.revision ?? 0) + 1 }, database);
   });
 }

@@ -23,6 +23,8 @@ header { display: flex; justify-content: space-between; align-items: center; pad
 .save-status { display: flex; justify-content: space-between; gap: 12px; font-size: .75rem; color: var(--muted); padding-top: 16px; }
 .feedback { color: var(--muted); font-size: .85rem; margin-top: 12px; }
 .feedback:empty { margin: 0; }
+.update { margin-top: 16px; }
+.update button { margin-top: 12px; }
 .page-heading { padding: 36px 0 28px; }
 .page-heading p:not(.eyebrow) { color: var(--muted); margin-top: 12px; }
 .eyebrow { font-size: .67rem; font-weight: 700; letter-spacing: .15em; color: var(--muted); margin-bottom: 12px; }

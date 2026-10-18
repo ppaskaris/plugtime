@@ -4,7 +4,7 @@ A personal, offline-first EV charging log for an installed iPhone PWA and deskto
 
 ## Current milestone
 
-The application supports start/stop, manual corrections, incomplete history, deletion, estimates, local statistics, defaults and CSV/JSON export. The built shell works offline after caching. Phase 2 adds a Cloudflare Worker, D1, owner-only Cloudflare Access, foreground synchronization and conflict review. Historical migration and physical iPhone offline verification remain pending.
+The application supports start/stop, manual corrections, incomplete history, deletion, estimates, local statistics, defaults and CSV/JSON export. The built shell works offline after caching. Phase 2 adds a Cloudflare Worker, D1, owner-only Cloudflare Access, foreground synchronization and conflict review. The owner reported the real-iPhone offline acceptance walkthrough passed on 2026-10-17. Phase 3 adds reviewed JSON recovery and a reconciled historical migration.
 
 ## Development
 
@@ -45,19 +45,19 @@ Changing defaults does not change existing estimates. Consumption and price assu
 
 Use **Cancel charge** to undo an accidental start directly from the Charging screen. Within the first minute it cancels immediately; after that it asks for confirmation. Stopping a charge under 60 seconds automatically discards it. Exactly 60 seconds counts. Completed manual entries and timestamp corrections must also be at least one minute. **Delete last charge** removes the latest completed session directly from its card after confirmation. Discarded/deleted records are excluded from history, statistics and CSV, with deletion markers retained for future sync.
 
-Export JSON in Statistics / Settings for the complete local dataset, assumptions, pending mutations and both sides of unresolved conflicts (schema version 2). CSV contains visible history and derived estimates. Both work offline. JSON restore/import is a later milestone; retain the original backup for migration. Persistent browser storage and cloud synchronization do not replace independent exports.
+Export JSON in Statistics / Settings for the complete local dataset, assumptions, pending mutations and both sides of unresolved conflicts (schema version 2). CSV contains visible history and derived estimates. Both work offline. **Import JSON backup** reviews missing records before adding them, preserves local edits/deletions, retains pending uploads and conflicts, and prepares a pre-import download. See [migration and recovery](docs/importing.md) for safeguards and cloud reconciliation. Persistent browser storage and cloud synchronization do not replace independent exports.
 
 Cloud backup shows pending, syncing, authentication, network and conflict states. Use **Sign in with Cloudflare** to restore an expired cloud session, then **Sync now** to retry. Recording always uses IndexedDB first. Foreground sync runs on launch, resume, connectivity recovery and local changes. Fresh authenticated installations download the complete history and tombstones. Default settings remain device-local; each cloud session carries its historical assumptions.
 
 Conflicting edits preserve this device’s version and the cloud version until you choose. Two conflicting active charges can both be kept by marking this device’s charge unfinished and restoring the cloud charge as active. Changing the hostname or port creates a separate browser data store: records from a LAN preview do not automatically migrate to the deployed HTTPS origin.
 
-Original source material belongs in the ignored `reference/` directory. Generated migration reports and private scratch files belong in ignored `.local/`, and exports in ignored `exports/`. Never put personal history in `public/`, test fixtures or committed docs. The original workbook and screenshot have not been modified or imported.
+Original source material belongs in the ignored `reference/` directory. Generated migration reports and private scratch files belong in ignored `.local/`, and exports in ignored `exports/`. Never put personal history in `public/`, test fixtures or committed docs. Historical records were migrated additively after reconciliation; the original workbook and screenshot remain unchanged.
 
 ## Architecture and next steps
 
 See [architecture, data model and phased implementation plan](docs/architecture.md). `src/domain.ts` owns calculations and time input validation, `src/db.ts` owns transactional persistence, and `src/exports.ts` owns export formats. React reads local data using Dexie live queries. Workbox caches only the public application shell. No analytics, paid dependencies, authentication framework or background infrastructure.
 
-`worker/` implements the authenticated API and `migrations/` holds D1 SQL. `src/sync.ts` owns the foreground queue and conflict handling. See [deployment guidance](docs/deployment.md) for local simulation, private account configuration, manual deployment and rollback. Automatic deployment is not enabled. Phase 3 migrates historical data with the owner-approved corrections kept in private local notes.
+`worker/` implements the authenticated API and `migrations/` holds D1 SQL. `src/sync.ts` owns the foreground queue and conflict handling. `src/imports.ts` validates backups and commits reviewed additions. See [deployment guidance](docs/deployment.md) for local simulation, private account configuration, manual deployment and rollback. Automatic deployment is not enabled. Historical corrections and migration evidence remain in private local notes.
 
 ## GitHub
 

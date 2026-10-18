@@ -8,6 +8,10 @@ beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new 
 afterEach(async () => { await database.delete(); vi.useRealTimers(); });
 
 describe('local persistence', () => {
+  it('accepts only timestamps and assumptions from manual input, preserving generated identity', async () => {
+    const saved = await saveSession({ ...defaults, startAt: '2024-01-01T12:00:00.000Z', endAt: '2024-01-01T13:00:00.000Z' }, undefined, database);
+    expect(saved.id).toMatch(/^[0-9a-f-]{36}$/); expect(saved.id).not.toBe('defaults');
+  });
   it('serializes concurrent starts and atomically queues one mutation', async () => {
     const results = await Promise.allSettled([startSession(database), startSession(database)]);
     expect(results.filter(r => r.status === 'fulfilled')).toHaveLength(1);

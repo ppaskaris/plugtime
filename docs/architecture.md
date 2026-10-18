@@ -2,7 +2,7 @@
 
 Initial review: 2026-10-17. The first milestone is a working local PWA. Cloud provisioning, synchronization, and historical migration follow after offline verification.
 
-Phase 2 implementation update (2026-10-17): the Worker, D1 schema, owner-only Access policy and foreground sync are implemented. The owner confirmed Free plans and successful production sign-in/sync; separate cloud databases are provisioned. Public shell/protected API probes pass. Real iPhone offline verification and historical migration remain rollout checks.
+Phase 2 implementation update (2026-10-17): the Worker, D1 schema, owner-only Access policy and foreground sync are implemented. The owner confirmed Free plans, production sign-in/sync and a successful real-iPhone offline acceptance walkthrough, including an additional conflict-resolution case. Separate cloud databases are provisioned and public shell/protected API probes pass. Phase 3 migration/recovery is described below; usability issues observed during testing remain for a separate session.
 
 ## Requirements and boundaries
 
@@ -19,6 +19,8 @@ Outbox fields: UUID mutation ID, session ID, local revision, base server revisio
 Store UTC instants, display/edit device-local time. Require explicit end dates for manual sessions spanning midnight. Reject nonexistent or ambiguous local times instead of silently adjusting them; future import uses explicit America/Toronto conversion and reports DST ambiguity. Attribute a session to the month/year of its local start time, including cross-midnight sessions.
 
 Workbox precaches the built shell, scripts, styles and icons. No fonts/CDNs at runtime. API and Access paths are excluded from navigation fallback and are never cached. Prompt for app updates and defer reload during a session or open editor. Request persistent browser storage from a user action; expose whether it was granted.
+
+`src/useAppUpdates.ts` explicitly checks the service-worker registration on open/resume/reconnection and manual request. It observes waiting workers directly and presents the prompt above page content. Each view approves its own reload, even if another view activates an update, so an open editor remains intact. Automatic update-check failures leave offline recording available. Registration/update behavior follows the [PWA plugin update guidance](https://vite-pwa-org.netlify.app/guide/periodic-sw-updates).
 
 ## Risks and mitigations
 
@@ -63,5 +65,7 @@ reference/            ignored original workbook and screenshot
 3. **Migration and polish:** implement a local XLSX-to-versioned-JSON migration with a dry-run report, repeatable IDs, Toronto timezone conversion, malformed/incomplete-row handling and cached-formula comparison. Preserve source evidence separately. Review reconciliation proposals before applying them. Confirm export/restore round trips, real iPhone offline behavior and the deployed free-tier setup.
 
 ## Decisions and prerequisites
+
+Phase 3 update (2026-10-17): historical conversion/reconciliation and additive production migration are complete. Reviewed schema-version-2 restoration validates pending envelopes, preserves conflicts/tombstones, blocks differing local records and queues missing records for cloud revision checks. Import never restores a cloud lease or silently replaces existing data. See [migration and recovery](importing.md); provenance and backups remain private.
 
 No missing information blocks Phase 1. Use `main`, npm and a simple three-section UI. The public repository name is `plugtime` under the authenticated personal GitHub account; no license is inferred. GitHub CLI operations require network access in this environment. Later deployment needs a Cloudflare account/Free plan, hostname, Access team domain/application audience and allowed identity. Historical reconciliation requires explicit review; no source corrections are applied automatically.

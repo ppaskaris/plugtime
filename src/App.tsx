@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useRegisterSW } from 'virtual:pwa-register/react';
+import { useAppUpdates } from './useAppUpdates';
 import { db, deleteSession, getSettings, saveSession, saveSettings, startSession, stopSession } from './db';
 import { cad, calculate, costCad, defaults, durationLabel, localInput, MIN_SESSION_MS, parseLocal, periodGroups, summarize, type Session, type Settings } from './domain';
 import { download, historyCsv, makeBackup } from './exports';
 import { CloudPanel } from './CloudPanel';
+import { ImportPanel } from './ImportPanel';
 
 const dateLabel = (iso: string) => new Date(iso).toLocaleString('en-CA', { dateStyle: 'medium', timeStyle: 'short' });
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : 'Could not save. Please try again.';
@@ -44,7 +45,7 @@ function SessionEditor({ session, settings, close, notify }: { session: Session 
   </dialog>;
 }
 
-function SettingsPanel({ settings, act }: { settings: Settings; act: (job: () => Promise<unknown>, message: string) => Promise<void> }) {
+function SettingsPanel({ settings, act, updates }: { settings: Settings; act: (job: () => Promise<unknown>, message: string) => Promise<void>; updates: ReturnType<typeof useAppUpdates> }) {
   const [power, setPower] = useState(String(settings.powerWatts / 1000));
   const [rate, setRate] = useState(String(settings.rateMicrosPerKwh / 1_000_000));
   const [storage, setStorage] = useState('Checking storage…');
@@ -72,6 +73,11 @@ function SettingsPanel({ settings, act }: { settings: Settings; act: (job: () =>
         <button onClick={() => void act(async () => { const backup = await makeBackup(); download('plugtime-history.csv', historyCsv(backup.sessions), 'text/csv;charset=utf-8'); }, 'CSV export prepared.')}>Export CSV</button>
       </div>
     </div>
+    <ImportPanel />
+    <div className="divider"><h3>App updates</h3><p>PlugTime checks for updates when opened, resumed or reconnected. Install available updates using the prompt at the top.</p>
+      <button disabled={updates.checking} onClick={() => void updates.check(true)}>{updates.checking ? 'Checking for updates…' : 'Check for app updates'}</button>
+      {updates.message && <p role="status">{updates.message}</p>}
+    </div>
     <div className="divider"><p>{storage}</p><button onClick={() => void act(async () => {
       const granted = await navigator.storage?.persist?.();
       setStorage(granted ? 'Persistent storage granted.' : 'Persistent storage was not granted. Keep exporting backups.');
@@ -90,9 +96,8 @@ export function App() {
   const [now, setNow] = useState(Date.now());
   const [online, setOnline] = useState(navigator.onLine);
   const [controlled, setControlled] = useState(!!navigator.serviceWorker?.controller);
-  const { offlineReady: [offlineReady], needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW({
-    onRegisterError: () => setError('Offline setup failed. Reopen online to try again. Your saved sessions are still on this device.'),
-  });
+  const updates = useAppUpdates();
+  const { offlineReady, needRefresh } = updates;
   const data = useLiveQuery(async () => {
     try {
       return { sessions: await db.sessions.orderBy('startAt').reverse().toArray(), settings: await getSettings(), pending: await db.outbox.count() };
@@ -127,6 +132,7 @@ export function App() {
     <header><a className="brand" href="#" onClick={e => { e.preventDefault(); setTab('charging'); }}><img src="/icon.svg" alt="" />PlugTime</a><span className="connection"><i className={online ? 'online' : ''} />{online ? 'Online' : 'Offline'}</span></header>
     <main>
       <div className="save-status"><span>On this device</span><span>{offlineReady || controlled ? 'Ready for offline use' : 'Offline setup pending'}</span></div>
+      {needRefresh && <section className="card update" aria-label="App update"><p>A PlugTime update is ready.{active || editor !== undefined ? ' It can be installed after you finish charging and close the editor.' : ''}</p><button disabled={!!active || editor !== undefined || busy} onClick={() => updates.install()}>Install update</button></section>}
       <p role="status" className="feedback">{notice}</p>
       {(error || data?.error) && <p role="alert" className="error">{error || data?.error}</p>}
       {!data ? <p>Opening your charging log…</p> : data.error ? <p>Your log could not be opened. Reopen the app and check available device storage. No changes have been saved.</p> : <>
@@ -169,11 +175,10 @@ export function App() {
             <div><span>Average duration</span><strong>{durationLabel(total.count ? total.durationMs / total.count : 0)}</strong></div><div><span>Average energy</span><strong>{(total.count ? total.energyKwh / total.count : 0).toFixed(2)} <small>kWh</small></strong></div>
           </section>
           {[false, true].map(yearly => <section className="card" key={String(yearly)}><h2>{yearly ? 'By year' : 'By month'}</h2><p className="muted">Grouped by session start date in your device’s timezone.</p><div className="period-list">{periodGroups(sessions, yearly).map(p => <div className="period-row" key={p.period}><strong>{p.period}</strong><span>{p.count} charges · {durationLabel(p.durationMs)}<br />{p.energyKwh.toFixed(2)} kWh · {cad(costCad(p.costNumerator))} CAD est.</span></div>)}{!total.count && <p>No completed sessions yet.</p>}</div></section>)}
-          <SettingsPanel settings={settings} act={act} />
+          <SettingsPanel settings={settings} act={act} updates={updates} />
         </>}
         <CloudPanel />
       </>}
-      {needRefresh && <div className="card update"><p>A PlugTime update is ready.{active || editor !== undefined ? ' It can be installed after you finish charging and close the editor.' : ''}</p><button disabled={!!active || editor !== undefined || busy} onClick={() => void updateServiceWorker(true)}>Install update</button></div>}
     </main>
     <nav aria-label="Main navigation">{(['charging', 'history', 'summary'] as const).map(t => <button key={t} aria-current={tab === t ? 'page' : undefined} onClick={() => setTab(t)}>{t === 'charging' ? 'Charging' : t === 'history' ? 'History' : 'Statistics / Settings'}</button>)}</nav>
     {editor !== undefined && <SessionEditor session={editor} settings={settings} close={() => setEditor(undefined)} notify={setNotice} />}
