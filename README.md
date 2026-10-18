@@ -74,6 +74,8 @@ See [architecture, data model and phased implementation plan](docs/architecture.
 
 See [mobile implementation and validation](docs/mobile-ui-implementation.md) for pinned dependencies, bundle cost, local checks and remaining device limits. The [approved plan](docs/mobile-ui-revisions.md) and [library decision](docs/mobile-ui-library-decision.md) are retained.
 
+The [Ionic adoption audit and completion plan](docs/ionic-adoption-audit.md) inventories every React component, maps remaining custom visual primitives to Ionic, and defines the application CSS to retain.
+
 ## GitHub
 
 The public repository is [ppaskaris/plugtime](https://github.com/ppaskaris/plugtime), with `main` as the primary branch. Clone it with:

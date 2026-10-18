@@ -275,3 +275,59 @@ or editing, multi-tab activation stays safe, and toolbar actions fit at 320px.
 Deployed production version: `e8166eed-e1a4-452f-9b3f-ed803e727ed7`, October 17,
 2026. Production assets match the tested build and API authentication remains
 enforced. No database migration was needed.
+
+
+## Ionic adoption completion — local, October 17, 2026
+
+Completed all six phases of the [Ionic adoption audit](ionic-adoption-audit.md),
+which preserves the original inventory and now records final evidence. Standard
+surfaces, ordinary actions, shared session list rows, disclosures and both
+cancellation confirmations use Ionic. Application CSS retains responsive content
+layouts, timer/metric typography, spacing, account badge composition and measured
+platform accommodations. Native date/time and file inputs remain approved controls.
+Account content explicitly chooses page-card or plain-sheet presentation.
+
+Nested years/months remain independently expanded through editing, tab and segment
+changes. Collapsed invalid assumptions open before validation focuses the field;
+editor and alert dismissal return focus to the correct Ionic native control.
+Cancellation retains the exact one-minute threshold, immediate short cancellation,
+existing Undo, repeated-request guards and write/dismissal protection.
+
+Measured at 390 × 844: the Charging card is 455.75px high versus 474.375px before;
+space below Start/Stop is 64px versus 81px. Idle and active controls both start at
+407.75px and remain 58px high. Enlarged 320px and 100-hour timer checks pass with
+less than 1px rounding tolerance. The audit contains the full geometry table and
+local screenshot/evidence paths.
+
+Validation: production build and both TypeScript checks pass; **75 unit/integration
+tests and all 22 Chromium browser tests pass**. Coverage includes offline recording,
+imports/exports, sync/auth/conflicts, Undo, update deferral, retained tabs/drafts,
+nested accordions, native input validation, large text, dark/reduced-motion/forced
+colors, keyboard focus and long account/conflict content. Main JS is 1,549.89 kB
+raw / 360.01 kB gzip; CSS 28.90 / 7.07 kB; 19 precache entries / 1,599.13 KiB.
+The existing large-bundle warning remains.
+
+No database/sync/API protocol or dependency-version changes were made. No deployment
+or publishing occurred in this completion pass. Actual coverage is local Windows
+Chromium, not physical iPhone Safari or an installed PWA. Hardware picker/keyboard,
+VoiceOver, rubber-band refresh, safe-area and gesture feel remain for the owner's
+later device evaluation, as authorized in the original migration acceptance scope.
+
+
+## Authorized production publication — October 17, 2026
+
+After local completion, the owner explicitly authorized publishing for phone testing.
+Deployed the tested build to [PlugTime](https://plugtime.patrick-c8b.workers.dev).
+Production Worker version: `e8939744-e374-4497-acbe-d9ac5a842c69`.
+
+Wrangler's production dry run passed and the remote migration list reported no
+migrations to apply. All 17 served build files (including the shell, manifest,
+service worker and application chunks) match local SHA-256 hashes; `_headers` is
+Cloudflare configuration rather than a served asset. The root shell also matches.
+The manifest and service worker return `Cache-Control: no-cache`. Unauthenticated
+requests to `/api`, `/api/config`, `/api/identity`, `/api/snapshot` and
+`/api/mutations` still redirect to Cloudflare Access. Verification details are saved
+in ignored `.local/ionic-deployment-verification.json`. No database migration,
+Access-policy change or authenticated production data mutation was performed.
+Physical-phone testing remains with the owner; publication does not establish
+Safari, picker, VoiceOver or installed-PWA hardware results.

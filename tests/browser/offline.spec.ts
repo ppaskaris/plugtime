@@ -107,6 +107,11 @@ test('reviews and imports a backup offline, exports it, and skips a repeat impor
   await page.getByText('Import JSON backup', {exact:true}).first().click();
   await page.getByLabel('Choose PlugTime JSON').setInputFiles(file);
   await expect(page.getByText('1 to add, 0 already present, 0 blocked.')).toBeVisible();
+  await page.getByRole('button', { name: 'Review records', exact: true }).click();
+  await expect(page.locator('ion-accordion-group').getByRole('listitem').filter({ hasText: / — add:/ })).toHaveCount(1);
+  await page.getByRole('button', { name: 'Review records', exact: true }).click();
+  await expect(page.getByLabel('Choose PlugTime JSON')).toBeVisible();
+
   const beforeDownload = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Add missing records' }).click();
   expect((await beforeDownload).suggestedFilename()).toBe('plugtime-before-import.json');

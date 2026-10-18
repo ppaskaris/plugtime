@@ -33,10 +33,10 @@ test('session assumptions are disclosed, validated and saved independently of de
     expect(Math.abs(geometry.actual - geometry.expected)).toBeLessThan(2);
   };
   await centered();
-  await expect(sheet(page).locator('details')).not.toHaveAttribute('open');
+  await expect(sheet(page).locator('.session-assumptions ion-item[slot=header]').getByRole('button')).toHaveAttribute('aria-expanded', 'false');
   await sheet(page).getByLabel('Start', { exact: true }).fill('2026-01-01T12:00');
   await sheet(page).getByLabel('End', { exact: true }).fill('2026-01-01T13:00');
-  await sheet(page).locator('summary').click();
+  await sheet(page).locator('.session-assumptions ion-item[slot=header]').click();
   const power = sheet(page).getByLabel('Session power (kW)', { exact: true });
   const rate = sheet(page).getByLabel('Session electricity rate (CAD/kWh)', { exact: true });
   await power.fill('7.2'); await rate.fill('0.15');
@@ -45,20 +45,20 @@ test('session assumptions are disclosed, validated and saved independently of de
   await page.reload();
   await tab(page, 'History').click(); await page.locator('.history-list .session-row').first().click();
   await centered();
-  await expect(sheet(page).locator('summary')).toContainText('7.2 kW · CAD $0.15/kWh');
-  await sheet(page).locator('summary').click();
+  await expect(sheet(page).locator('.session-assumptions ion-item[slot=header]')).toContainText('7.2 kW · CAD $0.15/kWh');
+  await sheet(page).locator('.session-assumptions ion-item[slot=header]').click();
   await power.fill('11'); await rate.fill('0.1234567');
-  await sheet(page).locator('summary').click();
+  await sheet(page).locator('.session-assumptions ion-item[slot=header]').click();
   await sheet(page).getByRole('button', { name: 'Save session' }).click();
-  await expect(sheet(page).locator('details')).toHaveAttribute('open', '');
+  await expect(sheet(page).locator('.session-assumptions ion-item[slot=header]').getByRole('button')).toHaveAttribute('aria-expanded', 'true');
   await expect(rate).toBeFocused();
   await rate.fill('0');
   await sheet(page).getByRole('button', { name: 'Save session' }).click();
   await expect(sheet(page)).toHaveCount(0); await closeNotices(page);
   await tab(page, 'History').click(); await page.locator('.history-list .session-row').first().click();
-  await expect(sheet(page).locator('summary')).toContainText('11 kW · CAD $0/kWh');
+  await expect(sheet(page).locator('.session-assumptions ion-item[slot=header]')).toContainText('11 kW · CAD $0/kWh');
   await page.setViewportSize({ width: 320, height: 844 }); await centered();
-  await sheet(page).locator('summary').click();
+  await sheet(page).locator('.session-assumptions ion-item[slot=header]').click();
   await power.fill('22');
   await page.emulateMedia({ colorScheme: 'dark' });
   await expect(sheet(page).locator('ion-item').first()).toHaveCSS('--background', '#1b2c24');
@@ -68,10 +68,10 @@ test('session assumptions are disclosed, validated and saved independently of de
   await page.screenshot({ path: '.local/session-assumptions-dark-320.png' });
   await sheet(page).getByRole('button', { name: 'Close', exact: true }).click();
   await page.locator('.history-list .session-row').first().click();
-  await expect(sheet(page).locator('summary')).toContainText('11 kW · CAD $0/kWh');
+  await expect(sheet(page).locator('.session-assumptions ion-item[slot=header]')).toContainText('11 kW · CAD $0/kWh');
   await sheet(page).getByRole('button', { name: 'Close', exact: true }).click();
   await tab(page, 'Charging').click(); await page.getByRole('button', { name: 'Add a session manually' }).click();
-  await expect(sheet(page).locator('summary')).toContainText('9.6 kW · CAD $0.203/kWh');
+  await expect(sheet(page).locator('.session-assumptions ion-item[slot=header]')).toContainText('9.6 kW · CAD $0.203/kWh');
   await centered();
 });
 
@@ -219,36 +219,48 @@ test('History groups local start months and Statistics expands years into months
   await tab(page, 'Statistics').click();
   await page.locator('ion-segment-button').filter({ hasText: 'By year' }).click();
   const stats = page.locator('.ion-page:not(.ion-page-hidden) .period-list');
-  const year = stats.locator(':scope > details').filter({ has: page.locator(':scope > summary > strong', { hasText: '2025' }) });
-  await expect(year).not.toHaveAttribute('open');
-  await year.locator(':scope > summary').focus(); await page.keyboard.press('Enter');
+  const year = stats.locator('ion-accordion[data-period="2025"]');
+  await expect(year.locator(':scope > ion-item').getByRole('button')).toHaveAttribute('aria-expanded', 'false');
+  await year.locator(':scope > ion-item').getByRole('button').focus(); await page.keyboard.press('Enter');
   const december = year.locator('.period-block');
-  await expect(december.locator('summary')).toContainText('December 2025');
-  await expect(december.locator('summary')).toContainText('28.80 kWh');
-  await december.locator('summary').click();
+  await expect(december.locator(':scope > ion-item')).toContainText('December 2025');
+  await expect(december.locator(':scope > ion-item')).toContainText('28.80 kWh');
+  await december.locator(':scope > ion-item').click();
   await expect(december.locator('.session-row')).toHaveCount(1);
   await december.locator('.session-row').click();
   await expect(sheet(page).getByLabel('Start', { exact: true })).toHaveValue('2025-12-31T23:00');
-  await sheet(page).locator('.session-assumptions summary').click();
+  await sheet(page).locator('.session-assumptions ion-item[slot=header]').click();
   await sheet(page).getByLabel('Session power (kW)', { exact: true }).fill('5');
   await sheet(page).getByRole('button', { name: 'Save session' }).click();
   await expect(sheet(page)).toHaveCount(0);
-  await expect(december.locator('summary')).toContainText('15.00 kWh');
-  await expect(year.locator(':scope > summary')).toContainText('15.00 kWh');
-  await expect(december.locator('.session-row')).toBeFocused();
+  await expect(december.locator(':scope > ion-item')).toContainText('15.00 kWh');
+  await expect(year.locator(':scope > ion-item')).toContainText('15.00 kWh');
+  await expect(december.locator('.session-row').getByRole('button')).toBeFocused();
   await page.setViewportSize({ width: 320, height: 844 });
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.addStyleTag({ content: 'html { font-size: 24px; }' });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
+  // Wait for Ionic's background transition after changing the media theme.
+  await expect(year.locator(':scope > ion-item').locator('.item-native')).toHaveCSS('background-color', 'rgb(27, 44, 36)');
+  await expect(december.locator('.session-row').locator('.item-native')).toHaveCSS('background-color', 'rgb(27, 44, 36)');
   await page.screenshot({ path: '.local/statistics-nested-dark-320.png' });
-  const currentYear = stats.locator(':scope > details').filter({ has: page.locator(':scope > summary > strong', { hasText: '2026' }) });
-  await currentYear.locator(':scope > summary').click();
+  const currentYear = stats.locator('ion-accordion[data-period="2026"]');
+  await currentYear.locator(':scope > ion-item').click();
   const september = currentYear.locator('.period-block').filter({ hasText: 'September 2026' });
-  await september.locator(':scope > summary').click();
+  await september.locator(':scope > ion-item').click();
   await expect(september.locator('.session-row')).toHaveCount(1);
-  await expect(september.locator('summary')).toContainText('9.60 kWh');
-  await expect(stats.locator('summary').filter({ hasText: 'August 2026' })).toHaveCount(0);
+  await expect(september.locator(':scope > ion-item')).toContainText('9.60 kWh');
+  await expect(stats.locator('ion-item[slot=header]').filter({ hasText: 'August 2026' })).toHaveCount(0);
   await expect(currentYear.locator('.period-block')).toHaveCount(3);
+  const octoberPeriod = currentYear.locator('ion-accordion[data-period="2026-10"]');
+  await octoberPeriod.locator(':scope > ion-item').click();
+  const expandedHeader = (period: import('@playwright/test').Locator) => period.locator(':scope > ion-item').getByRole('button');
+  for (const period of [year, december, currentYear, september, octoberPeriod]) await expect(expandedHeader(period)).toHaveAttribute('aria-expanded', 'true');
+  await tab(page, 'History').click(); await tab(page, 'Statistics').click();
+  await page.locator('ion-segment-button').filter({ hasText: 'Overview' }).click();
+  await page.locator('ion-segment-button').filter({ hasText: 'By year' }).click();
+  for (const period of [year, december, currentYear, september, octoberPeriod]) await expect(expandedHeader(period)).toHaveAttribute('aria-expanded', 'true');
+
 });
 
 test('Undo expiry pauses for hover and keyboard focus and notices stay above navigation', async ({ page }) => {
@@ -424,4 +436,122 @@ test('avatar overlays show pending count, sync progress, and offline state with 
     await context.setOffline(true); await expect(page.getByRole('button', { name: 'Account & sync: Offline' })).toBeVisible();
     await expect(page.locator('.account-badge ion-avatar')).toBeVisible();
   } finally { release(); }
+});
+
+
+test('Ionic cancellation alerts guard repeated requests, dismissal and confirmation in Charging and the editor', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-10-17T16:00:00Z'));
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Start Charging', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Stop Charging', exact: true })).toBeVisible();
+  await page.clock.setFixedTime(new Date('2026-10-17T16:01:00Z'));
+  const cancel = page.getByRole('button', { name: 'Cancel charge', exact: true });
+  // Two activations in the same task exercise the ref guard before React disables it.
+  await page.locator('.charge-secondary ion-button').first().evaluate(element => { (element as HTMLElement).click(); (element as HTMLElement).click(); });
+  const alert = page.locator('ion-alert:visible');
+  await expect(alert).toHaveCount(1);
+  await expect(page.getByRole('alertdialog')).toBeVisible();
+  await alert.getByRole('button', { name: 'Keep charging', exact: true }).click();
+  await expect(alert).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Stop Charging', exact: true })).toBeVisible();
+  await expect(cancel).toBeFocused();
+  await cancel.click(); await page.keyboard.press('Escape');
+  await expect(alert).toHaveCount(0);
+  await expect(toast(page)).toHaveCount(0);
+  await page.getByRole('button', { name: 'Correct timestamps', exact: true }).click();
+  await sheet(page).getByLabel('End', { exact: true }).fill('2026-10-17T12:02');
+  await sheet(page).getByRole('button', { name: 'Delete session', exact: true }).click();
+  await expect(page.getByRole('alertdialog')).toBeVisible();
+  await alert.getByRole('button', { name: 'Keep charging', exact: true }).click();
+  await expect(sheet(page).getByLabel('End', { exact: true })).toHaveValue('2026-10-17T12:02');
+  await expect(sheet(page).getByRole('button', { name: 'Delete session', exact: true })).toBeFocused();
+  await sheet(page).getByRole('button', { name: 'Delete session', exact: true }).click();
+  await alert.getByRole('button', { name: 'Cancel charge', exact: true }).click();
+  await expect(sheet(page)).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Start Charging', exact: true })).toBeVisible();
+  await toast(page).getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Stop Charging', exact: true })).toBeVisible();
+  await closeNotices(page);
+  await cancel.click(); await alert.getByRole('button', { name: 'Cancel charge', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Start Charging', exact: true })).toBeVisible();
+  await expect(toast(page).getByRole('status')).toContainText('Charge cancelled');
+});
+
+test('Charging has bounded lower space and stable primary controls at phone, enlarged and desktop sizes', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-10-17T16:00:00Z'));
+  await page.goto('/');
+  for (const [width, text] of [[390, 16], [320, 24], [1100, 16]]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.addStyleTag({ content: `html { font-size: ${text}px; }` });
+    const start = page.getByRole('button', { name: 'Start Charging', exact: true });
+    await expect(start).toBeVisible();
+    const primary = (await page.locator('.charge-control').boundingBox())!;
+    const tile = (await page.locator('.charging-tile').boundingBox())!;
+    const manual = (await page.locator('.manual-button').boundingBox())!;
+    if (text === 16) {
+      expect(tile.y + tile.height - primary.y - primary.height).toBeLessThanOrEqual(65);
+      expect(manual.y - tile.y - tile.height).toBeLessThanOrEqual(16);
+    }
+    await start.click();
+    await expect(page.getByRole('button', { name: 'Stop Charging', exact: true })).toBeVisible();
+    expect(Math.abs((await page.locator('.charge-control').boundingBox())!.y - primary.y)).toBeLessThan(1);
+    await page.clock.setFixedTime(new Date('2026-10-21T20:00:00Z'));
+    await page.evaluate(() => window.dispatchEvent(new Event('pageshow')));
+    await expect(page.locator('.timer')).toHaveText('100h 00m');
+    expect(Math.abs((await page.locator('.charge-control').boundingBox())!.y - primary.y)).toBeLessThan(1);
+    for (const action of await page.locator('.charging-tile ion-button').all()) {
+      const box = (await action.boundingBox())!;
+      expect(box.height).toBeGreaterThanOrEqual(44);
+      expect(box.x).toBeGreaterThanOrEqual(tile.x);
+      expect(box.x + box.width).toBeLessThanOrEqual(tile.x + tile.width);
+    }
+    await page.getByRole('button', { name: 'Cancel charge', exact: true }).click();
+    await page.locator('ion-alert').getByRole('button', { name: 'Cancel charge', exact: true }).click();
+    await expect(start).toBeVisible(); await closeNotices(page);
+    await page.clock.setFixedTime(new Date('2026-10-17T16:00:00Z'));
+  }
+  await page.emulateMedia({ forcedColors: 'active', reducedMotion: 'reduce' });
+  const start = page.getByRole('button', { name: 'Start Charging', exact: true });
+  await start.focus(); await page.keyboard.press('Tab'); await page.keyboard.press('Shift+Tab');
+  await expect(start).toBeFocused();
+  await expect(start).toHaveCSS('outline-style', 'solid');
+  await page.screenshot({ path: '.local/ionic-charging-forced-colors.png' });
+});
+
+
+test('long account identities and conflict comparisons fit page and plain sheet presentations', async ({ page, context }) => {
+  await page.goto('/settings');
+  await expect(page.getByRole('heading', { name: 'Charging defaults', exact: true })).toBeVisible();
+  await context.setOffline(true);
+  await page.evaluate(async () => {
+    const request = indexedDB.open('plugtime');
+    const database = await new Promise<IDBDatabase>(resolve => { request.onsuccess = () => resolve(request.result); });
+    const transaction = database.transaction(['cloud', 'conflicts', 'sessions'], 'readwrite');
+    const stamp = '2026-01-01T12:00:00.000Z';
+    const session = { id: 'conflicted', startAt: stamp, endAt: '2026-01-01T13:00:00.000Z', state: 'completed', powerWatts: 9600, rateMicrosPerKwh: 203000, createdAt: stamp, updatedAt: stamp, revision: 2, serverRevision: 1 };
+    transaction.objectStore('sessions').put(session);
+    transaction.objectStore('conflicts').put({ sessionId: session.id, remote: { ...session, powerWatts: 7200 }, active: null, reason: 'different revision' });
+    transaction.objectStore('cloud').put({ id: 'cloud', status: 'conflict', enabled: true, lastAttemptAt: Date.now(), identity: { email: `${'long.owner.'.repeat(12)}@example.com`, verifiedAt: stamp }, message: 'Review both saved versions before choosing.' });
+    await new Promise<void>(resolve => { transaction.oncomplete = () => resolve(); }); database.close();
+  });
+  await page.reload();
+  await page.setViewportSize({ width: 320, height: 844 });
+  await page.addStyleTag({ content: 'html { font-size: 24px; }' });
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+  const account = page.getByRole('region', { name: 'Cloud synchronization', exact: true });
+  await expect(account.getByRole('heading', { name: 'Review conflicting charge' })).toBeVisible();
+  for (const button of await account.getByRole('button').all()) {
+    const box = (await button.boundingBox())!;
+    expect(box.height).toBeGreaterThanOrEqual(44); expect(box.x + box.width).toBeLessThanOrEqual(320);
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
+  await page.locator('ion-button.account-badge:visible').click();
+  const modal = page.locator('ion-modal.account-sheet');
+  await expect(modal.getByRole('region', { name: 'Cloud synchronization', exact: true })).toBeVisible();
+  await expect(modal.locator('ion-card')).toHaveCount(0);
+  await expect(modal.getByRole('heading', { name: 'Account & sync', exact: true })).toBeVisible();
+  await modal.getByRole('button', { name: 'Use cloud version', exact: true }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: '.local/ionic-account-conflict-dark-320.png' });
+  await modal.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(page).toHaveURL(/settings$/);
 });

@@ -13,6 +13,7 @@ import { SessionEditor } from './SessionEditor';
 import { Charging, History, Statistics, SettingsScreen } from './Screens';
 import { AccountButton } from './AccountButton';
 import { useSafeArea } from './useSafeArea';
+import { Feedback } from './UI';
 
 function useController() {
   useSafeArea();
@@ -70,7 +71,7 @@ function Page({ title, children, add = false }: { title: string; children: React
     <IonContent forceOverscroll>
       <IonRefresher slot="fixed" onIonRefresh={event => { void Promise.allSettled([app.cloud.sync(), app.updates.check(true)]).finally(() => event.detail.complete()); }}><IonRefresherContent pullingText="Pull to refresh" refreshingText="Checking…" /></IonRefresher>
       <main className="page-body">
-        {failed && <div className="error" role="alert"><p>{failed}</p><button onClick={() => app.setError('')}>Dismiss</button></div>}
+        {failed && <Feedback dismiss={() => app.setError('')}>{failed}</Feedback>}
         {!app.data ? <p>Opening your charging log…</p> : app.data.error ? <p>Reopen the app and check device storage. No changes have been saved.</p> : children}
       </main>
     </IonContent>
@@ -95,7 +96,7 @@ export function App() {
   </IonReactRouter>
     <IonModal ref={accountModal} isOpen={app.account} initialBreakpoint={1} breakpoints={[0, 1]} className="account-sheet" aria-label="Account & sync" onDidDismiss={() => app.setAccount(false)} onDidPresent={() => accountClose.current?.shadowRoot?.querySelector('button')?.focus()}>
       <IonHeader><IonToolbar><IonTitle>Account &amp; sync</IonTitle><IonButtons slot="start"><IonButton ref={accountClose} onClick={() => void accountModal.current?.dismiss()}>Close</IonButton></IonButtons></IonToolbar></IonHeader>
-      <IonContent><div className="sheet-body"><AccountPanel service={app.cloud} /></div></IonContent>
+      <IonContent><div className="sheet-body"><AccountPanel service={app.cloud} presentation="sheet" /></div></IonContent>
     </IonModal>
     {app.editor !== undefined && <SessionEditor session={app.editor} settings={app.settings} opener={app.opener.current} close={() => app.setEditor(undefined)} notify={app.notices.notify} />}
     <Notifications notice={app.notices.queue[0]} remove={app.notices.remove} onError={app.setError} />

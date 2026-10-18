@@ -5,6 +5,7 @@ import { resolveConflict, synchronize } from './sync';
 import type { Session } from './domain';
 import { IonButton } from '@ionic/react';
 import { AUTO_SYNC_INTERVAL_MS } from './sync';
+import { Surface } from './UI';
 
 function describe(session: Session | null | undefined) {
   if (!session) return 'No cloud record for this session.';
@@ -79,10 +80,10 @@ export function syncLabel(cloud: import('./domain').CloudState | undefined, pend
 }
 
 export type CloudSync = ReturnType<typeof useCloudSync>;
-export function AccountPanel({ service }: { service: CloudSync }) {
+export function AccountPanel({ service, presentation = 'page' }: { service: CloudSync; presentation?: 'page' | 'sheet' }) {
   const { data, error, setError, sync, syncing, online, label } = service;
   const cloud = data?.cloud;
-  return <section className="card cloud-panel" aria-label="Cloud synchronization">
+  const content = <div className="cloud-panel flow">
     <h2>Account &amp; sync</h2>
     <p className="identity">{cloud?.identity?.email ?? 'Identity not verified'}</p>
     {cloud?.identity && <p className="muted">Last verified {new Date(cloud.identity.verifiedAt).toLocaleString()}{!online || cloud.status === 'auth' || cloud.status === 'offline' ? ' · authentication cannot currently be verified' : ''}</p>}
@@ -103,5 +104,6 @@ export function AccountPanel({ service }: { service: CloudSync }) {
         try { await resolveConflict(conflict, choice); await sync(); } catch (e) { setError(e instanceof Error ? e.message : 'Could not resolve conflict.'); }
       }}>{choice === 'local' ? conflict.active && conflict.active.id !== conflict.sessionId ? 'Keep both; mark mine unfinished' : 'Keep this device’s version' : 'Use cloud version'}</IonButton>)}</div>
     </div>)}
-  </section>;
+  </div>;
+  return presentation === 'sheet' ? <section aria-label="Cloud synchronization">{content}</section> : <Surface label="Cloud synchronization">{content}</Surface>;
 }

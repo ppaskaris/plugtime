@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { IonButton } from '@ionic/react';
+import { Disclosure, Feedback } from './UI';
 import { applyImport, reviewImport, type ImportReview } from './imports';
 import { download, makeBackup } from './exports';
 
@@ -7,7 +8,7 @@ export function ImportPanel() {
   const [review, setReview] = useState<ImportReview>();
   const [error, setError] = useState(''), [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
-  return <div className="divider stack">
+  return <div className="flow">
     <h3>Import JSON backup</h3>
     <p>Review missing records before adding them. Existing records, edits, conflicts and deletions are kept. Cloud differences require conflict review after sync. Defaults are restored only to an empty, unconfigured local store.</p>
     <label className="native-field">Choose PlugTime JSON<input type="file" accept="application/json,.json" disabled={busy} onChange={async e => {
@@ -22,7 +23,7 @@ export function ImportPanel() {
     }} /></label>
     {review && <>
       <p role="status">{review.rows.filter(r => r.action === 'add').length} to add, {review.rows.filter(r => r.action === 'skip' && !r.deletionPreserved).length} already present, {review.rows.filter(r => r.action === 'blocked' && !r.deletionPreserved).length} blocked.{review.rows.some(r => r.deletionPreserved) && ` ${review.rows.filter(r => r.deletionPreserved).length} deletions preserved.`}</p>
-      <details><summary>Review records</summary><p>Records are matched by their saved IDs. Start times below help you identify them.</p><ul>{review.rows.map(r => <li key={r.id}>{new Date(r.startAt).toLocaleString()} — {r.deletionPreserved ? 'deletion preserved' : r.action}: {r.reason}</li>)}</ul></details>
+      <Disclosure title="Review records"><p>Records are matched by their saved IDs. Start times below help you identify them.</p><ul>{review.rows.map(r => <li key={r.id}>{new Date(r.startAt).toLocaleString()} — {r.deletionPreserved ? 'deletion preserved' : r.action}: {r.reason}</li>)}</ul></Disclosure>
       <IonButton fill="outline" disabled={busy || !review.rows.some(r => r.action === 'add')} onClick={async () => {
         setBusy(true); setError('');
         try {
@@ -35,6 +36,6 @@ export function ImportPanel() {
         finally { setBusy(false); }
       }}>Add missing records</IonButton>
     </>}
-    {message && <p role="status">{message}</p>}{error && <p role="alert" className="error">{error}</p>}
+    {message && <p role="status">{message}</p>}{error && <Feedback>{error}</Feedback>}
   </div>;
 }
