@@ -3,7 +3,7 @@ import { beforeAll, afterAll, afterEach, expect, it } from 'vitest';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from 'jose';
 import { applyMutation, snapshot } from '../../worker/store';
-import { authorize } from '../../worker/auth';
+import { authorize, verifiedIdentity } from '../../worker/auth';
 import { defaults, type Session } from '../../src/domain';
 import { parseUpload } from '../../src/protocol';
 let mf: Miniflare;
@@ -63,6 +63,8 @@ it('verifies signed JWTs and rejects expired, forged, wrong-audience and wrong-i
   }
   const request = (value: string) => new Request('https://app.example/api/snapshot',{headers:{'Cf-Access-Jwt-Assertion':value}});
   expect(await authorize(request(await token()),env,jwks)).toBe(true);
+  expect(await verifiedIdentity(request(await token()),env,jwks)).toEqual({ email: 'owner@example.com' });
+  expect(await verifiedIdentity(request(await token('other@example.com')),env,jwks)).toBeNull();
   expect(await authorize(request(await token('other@example.com')),env,jwks)).toBe(false);
   expect(await authorize(request(await token(env.ALLOWED_EMAIL,'wrong')),env,jwks)).toBe(false);
   expect(await authorize(request(await token(env.ALLOWED_EMAIL,env.ACCESS_AUDIENCE,'-1h')),env,jwks)).toBe(false);

@@ -21,11 +21,16 @@
     "cf:deploy": "wrangler deploy --config .local/wrangler.jsonc --env production"
   },
   "dependencies": {
+    "@ionic/react": "9.0.8",
+    "@ionic/react-router": "9.0.8",
     "dexie": "4.4.6",
     "dexie-react-hooks": "4.4.0",
+    "ionicons": "8.0.13",
     "jose": "6.2.12",
     "react": "19.3.1",
-    "react-dom": "19.3.1"
+    "react-dom": "19.3.1",
+    "react-router": "6.30.6",
+    "react-router-dom": "6.30.6"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20261016.1",

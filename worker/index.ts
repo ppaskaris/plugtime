@@ -1,4 +1,4 @@
-import { accessConfigured, authorize } from './auth';
+import { accessConfigured, verifiedIdentity } from './auth';
 import { applyMutation, snapshot } from './store';
 import { parseUpload } from '../src/protocol';
 
@@ -26,7 +26,9 @@ export default {
     if (url.pathname !== '/api' && !url.pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
     if (url.pathname === '/api/config' && request.method === 'GET') return json({ enabled: accessConfigured(env) });
     if (!accessConfigured(env)) return json({ error: 'not_configured' }, 503);
-    if (!await authorize(request, env)) return json({ error: 'authentication_required' }, 401);
+    const identity = await verifiedIdentity(request, env);
+    if (!identity) return json({ error: 'authentication_required' }, 401);
+    if (url.pathname === '/api/identity' && request.method === 'GET') return json(identity);
     if (request.method === 'GET' && url.pathname === '/api/login')
       return new Response(null, { status: 303, headers: { Location: '/', 'Cache-Control': 'no-store' } });
     try {

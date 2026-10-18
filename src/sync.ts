@@ -1,13 +1,13 @@
 import { db, type PlugTimeDatabase } from './db';
 import { newId } from './ids';
 import { isRecord, parseSession, type Upload } from './protocol';
-import type { CloudState, Session, SyncConflict } from './domain';
+import type { CloudState, Mutation, Session, SyncConflict } from './domain';
 
 export class SyncError extends Error {
   constructor(public kind: 'auth' | 'offline' | 'error', message: string) { super(message); }
 }
 export interface UploadResult { status: number; session?: Session; remote?: Session | null; active?: Session | null; error?: string }
-export interface SyncTransport { configured(): Promise<boolean>; snapshot(): Promise<Session[]>; upload(value: Upload): Promise<UploadResult> }
+export interface SyncTransport { configured(): Promise<boolean>; identity(): Promise<{ email: string }>; snapshot(): Promise<Session[]>; upload(value: Upload): Promise<UploadResult> }
 async function request(path: string, body?: unknown) {
   let response: Response;
   try {
@@ -19,6 +19,13 @@ async function request(path: string, body?: unknown) {
   return response;
 }
 export const transport: SyncTransport = {
+  async identity() {
+    const response = await request('/api/identity');
+    if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) throw new SyncError('auth', 'Sign in to verify your account.');
+    const value: unknown = await response.json();
+    if (!isRecord(value) || typeof value.email !== 'string' || !value.email) throw new SyncError('error', 'Could not verify account identity.');
+    return { email: value.email };
+  },
   async configured() {
     const response = await request('/api/config');
     if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) return false;
@@ -70,12 +77,60 @@ export async function mergeSnapshot(remote: Session[], database = db) {
   });
 }
 
-export async function synchronize(database: PlugTimeDatabase = db, api: SyncTransport = transport) {
+// Obsolete starts are not history: uploading them ahead of cancellations can
+// manufacture active-charge conflicts. Never discard an uncertain upload.
+async function prepareQueue(database: PlugTimeDatabase, retriedActiveConflicts: Set<string>) {
+  return database.transaction('rw', database.sessions, database.outbox, database.conflicts, async () => {
+    const queued = await database.outbox.toArray();
+    for (const item of queued) {
+      if (item.snapshot.state !== 'active') continue;
+      const current = await database.sessions.get(item.sessionId);
+      if (!current || current.state === 'active' || current.revision <= item.localRevision) continue;
+      const conflict = await database.conflicts.get(item.sessionId);
+      // A stored active_conflict/null remote proves this start was rejected,
+      // unlike a timed-out request that may already have reached the server.
+      const rejected = conflict?.reason === 'active_conflict' && conflict.remote === null;
+      if (!item.upload || rejected) {
+        await database.outbox.delete(item.id);
+        if (rejected) await database.conflicts.delete(item.sessionId);
+      }
+    }
+    for (const conflict of await database.conflicts.toArray()) {
+      if (conflict.reason !== 'active_conflict' || conflict.remote !== null || !conflict.active || retriedActiveConflicts.has(conflict.sessionId)) continue;
+      const blocker = await database.sessions.get(conflict.active.id);
+      // Recover old queue-order conflicts only when this device has already
+      // finished/cancelled that blocker and can upload its release first.
+      if (blocker && blocker.state !== 'active' && blocker.serverRevision >= conflict.active.serverRevision &&
+        !await database.conflicts.get(blocker.id)) {
+        await database.conflicts.delete(conflict.sessionId);
+        retriedActiveConflicts.add(conflict.sessionId);
+      }
+    }
+    const blocked = new Set((await database.conflicts.toArray()).map(conflict => conflict.sessionId));
+    const firstBySession = new Map<string, Mutation>();
+    for (const item of (await database.outbox.toArray()).sort((a, b) => a.localRevision - b.localRevision || a.id.localeCompare(b.id))) {
+      if (!blocked.has(item.sessionId) && !firstBySession.has(item.sessionId)) firstBySession.set(item.sessionId, item);
+    }
+    // Preserve revision order within each record, but release active slots
+    // before starting another record. An existing upload retains its envelope.
+    return [...firstBySession.values()].sort((a, b) =>
+      Number((a.upload?.snapshot ?? a.snapshot).state === 'active') - Number((b.upload?.snapshot ?? b.snapshot).state === 'active') ||
+      a.snapshot.createdAt.localeCompare(b.snapshot.createdAt) || a.id.localeCompare(b.id))[0];
+  });
+}
+
+export const AUTO_SYNC_INTERVAL_MS = 3_600_000;
+export async function synchronize(database: PlugTimeDatabase = db, api: SyncTransport = transport, options: { automatic?: boolean } = {}) {
   const owner = newId();
   const acquired = await database.transaction('rw', database.cloud, async () => {
     const current = await database.cloud.get('cloud');
-    if (current?.leaseUntil && current.leaseUntil > Date.now()) return false;
-    await database.cloud.put({ ...current, id: 'cloud', status: 'syncing', leaseOwner: owner, leaseUntil: Date.now() + 120_000 });
+    const now = Date.now();
+    if (current?.leaseUntil && current.leaseUntil > now) return false;
+    // Persist the attempt atomically with the lease so reloads and other tabs
+    // share the limit. Failures count too; manual synchronization bypasses it.
+    const lastAttempt = current?.lastAttemptAt ?? (current?.lastSuccessAt ? Date.parse(current.lastSuccessAt) : undefined);
+    if (options.automatic && lastAttempt !== undefined && now - lastAttempt < AUTO_SYNC_INTERVAL_MS) return false;
+    await database.cloud.put({ ...current, id: 'cloud', status: 'syncing', lastAttemptAt: now, leaseOwner: owner, leaseUntil: now + 120_000 });
     return true;
   });
   if (!acquired) return;
@@ -83,14 +138,15 @@ export async function synchronize(database: PlugTimeDatabase = db, api: SyncTran
   try {
     if (!await api.configured()) { await status({ enabled: false, status: 'idle', message: '' }); return; }
     await status({ enabled: true });
+    const identity = await api.identity();
+    await status({ identity: { ...identity, verifiedAt: new Date().toISOString() } });
     // Retry uncertain uploads before pulling: a lost acknowledgement must be replayed,
     // not mistaken for a conflicting remote edit in the snapshot.
     // Bound a foreground run; later events/manual retry continue any remaining queue.
+    const retriedActiveConflicts = new Set<string>();
     for (let count = 0; count < 500; count++) {
       await status({ leaseUntil: Date.now() + 120_000 });
-      const queued = (await database.outbox.toArray()).sort((a, b) => a.localRevision - b.localRevision || a.id.localeCompare(b.id));
-      const blocked = new Set((await database.conflicts.toArray()).map(c => c.sessionId));
-      const next = queued.find(mutation => !blocked.has(mutation.sessionId)); if (!next) break;
+      const next = await prepareQueue(database, retriedActiveConflicts); if (!next) break;
       const sent = await database.transaction('rw', database.outbox, database.sessions, async () => {
         const item = await database.outbox.get(next.id); if (!item) return null;
         if (!item.upload) {

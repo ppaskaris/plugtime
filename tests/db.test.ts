@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { PlugTimeDatabase, deleteSession, saveSession, saveSettings, startSession, stopSession } from '../src/db';
+import { PlugTimeDatabase, deleteSession, restoreSession, saveSession, saveSettings, startSession, stopSession } from '../src/db';
 import { defaults } from '../src/domain';
 import { historyCsv, makeBackup } from '../src/exports';
 let database: PlugTimeDatabase;
@@ -8,6 +8,53 @@ beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new 
 afterEach(async () => { await database.delete(); vi.useRealTimers(); });
 
 describe('local persistence', () => {
+  it.each(['stop', 'cancel'] as const)('clears never-sent %s mutations immediately, preserving the tombstone and Undo', async action => {
+    const original = await startSession(database);
+    const edited = await saveSession({ ...original, powerWatts: 7200 }, original, database);
+    const deleted = await (action === 'stop' ? stopSession(edited, database) : deleteSession(edited, database));
+    expect(await database.outbox.count()).toBe(0);
+    expect((await database.sessions.get(original.id))?.state).toBe('deleted');
+    const restored = await restoreSession(edited, deleted.revision, database);
+    expect(restored).toMatchObject({ id: original.id, state: 'active', powerWatts: 7200 });
+    expect((await database.outbox.toArray()).map(item => item.snapshot.state)).toEqual(['active']);
+  });
+  it.each(['stop', 'cancel'] as const)('preserves uncertain or acknowledged uploads during %s', async action => {
+    const original = await startSession(database);
+    const mutation = (await database.outbox.toArray())[0];
+    const upload = { id: mutation.id, baseServerRevision: 0, snapshot: mutation.snapshot };
+    await database.outbox.update(mutation.id, { upload });
+    await (action === 'stop' ? stopSession(original, database) : deleteSession(original, database));
+    expect(await database.outbox.count()).toBe(2);
+    expect((await database.outbox.get(mutation.id))?.upload).toEqual(upload);
+    const other = await startSession(database);
+    await database.sessions.update(other.id, { serverRevision: 1 });
+    await database.outbox.where('sessionId').equals(other.id).delete();
+    const known = { ...other, serverRevision: 1 };
+    await (action === 'stop' ? stopSession(known, database) : deleteSession(known, database));
+    expect((await database.outbox.where('sessionId').equals(other.id).toArray()).map(item => item.snapshot.state)).toEqual(['deleted']);
+  });
+  it('resumes a short discard at the original start and recovers cancellation as unfinished when another charge starts', async () => {
+    const original = await startSession(database);
+    const discarded = await stopSession(original, database);
+    vi.setSystemTime(Date.now() + 20_000);
+    const resumed = await restoreSession(original, discarded.revision, database);
+    expect(resumed).toMatchObject({ id: original.id, startAt: original.startAt, state: 'active', createdAt: original.createdAt, revision: 3 });
+    const cancelled = await deleteSession(resumed, database);
+    const other = await startSession(database);
+    const restored = await restoreSession(resumed, cancelled.revision, database);
+    expect(restored.state).toBe('incomplete'); expect(restored.activeKey).toBeUndefined();
+    expect((await database.sessions.where('activeKey').equals('active').toArray()).map(s => s.id)).toEqual([other.id]);
+  });
+  it('blocks Undo after a newer content change or an unresolved conflict', async () => {
+    const original = await startSession(database);
+    const deleted = await deleteSession(original, database);
+    await database.conflicts.put({ sessionId: original.id, remote: null, active: null, reason: 'revision_conflict' });
+    await expect(restoreSession(original, deleted.revision, database)).rejects.toThrow('changed');
+    await database.conflicts.clear();
+    await database.sessions.update(original.id, { revision: deleted.revision + 1 });
+    await expect(restoreSession(original, deleted.revision, database)).rejects.toThrow('changed');
+    expect((await database.sessions.get(original.id))?.state).toBe('deleted');
+  });
   it('accepts only timestamps and assumptions from manual input, preserving generated identity', async () => {
     const saved = await saveSession({ ...defaults, startAt: '2024-01-01T12:00:00.000Z', endAt: '2024-01-01T13:00:00.000Z' }, undefined, database);
     expect(saved.id).toMatch(/^[0-9a-f-]{36}$/); expect(saved.id).not.toBe('defaults');
@@ -50,7 +97,7 @@ describe('local persistence', () => {
     const stopped = await stopSession(active, database);
     expect(stopped.state).toBe('deleted');
     expect(stopped.activeKey).toBeUndefined();
-    expect((await makeBackup(database)).outbox.find(mutation => mutation.localRevision === 2)?.snapshot.state).toBe('deleted');
+    expect((await makeBackup(database)).outbox).toHaveLength(0);
     expect(historyCsv(await database.sessions.toArray()).split('\r\n')).toHaveLength(1);
     expect((await startSession(database)).state).toBe('active');
   });
@@ -72,7 +119,7 @@ describe('local persistence', () => {
     const active = await startSession(database);
     const deleted = await deleteSession(active, database);
     expect(deleted.state).toBe('deleted'); expect(deleted.activeKey).toBeUndefined();
-    expect(await database.outbox.count()).toBe(2);
+    expect(await database.outbox.count()).toBe(0);
     expect((await startSession(database)).state).toBe('active');
   });
   it('rolls back the session when queuing its mutation fails', async () => {
@@ -84,7 +131,7 @@ describe('local persistence', () => {
     const active = await startSession(database); await deleteSession(active, database);
     const backup = await makeBackup(database);
     expect(JSON.parse(JSON.stringify(backup))).toEqual(backup);
-    expect(backup.outbox).toHaveLength(2); expect(backup.sessions[0].state).toBe('deleted');
+    expect(backup.outbox).toHaveLength(0); expect(backup.sessions[0].state).toBe('deleted');
     expect(backup.settings).toEqual(defaults);
     expect(historyCsv(backup.sessions).split('\r\n')).toHaveLength(1);
   });

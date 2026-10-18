@@ -7,5 +7,5 @@
     "types": ["vite/client", "vite-plugin-pwa/react", "node"]
   },
   "include": ["src", "tests", "scripts/**/*.ts", "vite.config.ts", "vitest.config.ts", "playwright.config.ts"],
-  "exclude": ["tests/server"]
+  "exclude": ["tests/server", "tests/integration"]
 }

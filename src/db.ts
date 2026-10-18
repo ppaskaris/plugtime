@@ -22,12 +22,21 @@ export async function saveSettings(assumptions: Assumptions, database = db) {
   validateAssumptions(assumptions);
   await database.settings.put({ ...assumptions, id: 'defaults' });
 }
-async function writeSession(session: Session, database: PlugTimeDatabase) {
+async function writeSession(session: Session, database: PlugTimeDatabase, discardUnsent = false) {
   validateSession(session);
   const record = { ...session };
   if (record.state === 'active') record.activeKey = 'active';
   else delete record.activeKey;
   await database.sessions.put(record);
+  // Keep the local tombstone for Undo/import protection, but a never-sent charge
+  // needs no cloud deletion. A frozen envelope may already have reached cloud.
+  if (discardUnsent && record.serverRevision === 0 && !await database.conflicts.get(record.id)) {
+    const pending = await database.outbox.where('sessionId').equals(record.id).toArray();
+    if (!pending.some(item => item.upload)) {
+      await database.outbox.where('sessionId').equals(record.id).delete();
+      return record;
+    }
+  }
   await database.outbox.add({ id: newId(), sessionId: record.id, localRevision: record.revision,
     baseServerRevision: record.serverRevision, snapshot: record });
   return record;
@@ -58,7 +67,7 @@ export async function saveSession(input: SessionInput, existing?: Pick<Session, 
   });
 }
 export async function stopSession(session: Session, database = db) {
-  return database.transaction('rw', database.sessions, database.outbox, async () => {
+  return database.transaction('rw', database.sessions, database.outbox, database.conflicts, async () => {
     const current = await database.sessions.get(session.id);
     if (!current || current.revision !== session.revision || current.state !== 'active')
       throw new Error('This session changed. Close and reopen it before stopping.');
@@ -68,14 +77,27 @@ export async function stopSession(session: Session, database = db) {
     // Keep a tombstone so an accidental charge cannot reappear after future sync.
     const discarded = elapsed < MIN_SESSION_MS;
     return writeSession({ ...current, state: discarded ? 'deleted' : 'completed', endAt: discarded ? null : now,
-      updatedAt: now, revision: current.revision + 1 }, database);
+      updatedAt: now, revision: current.revision + 1 }, database, discarded);
   });
 }
 export async function deleteSession(session: Session, database = db) {
-  return database.transaction('rw', database.sessions, database.outbox, async () => {
+  return database.transaction('rw', database.sessions, database.outbox, database.conflicts, async () => {
     const current = await database.sessions.get(session.id);
     if (!current || current.revision !== session.revision || current.state === 'deleted')
       throw new Error('This session changed. Close and reopen it before deleting.');
-    return writeSession({ ...current, state: 'deleted', updatedAt: new Date().toISOString(), revision: current.revision + 1 }, database);
+    return writeSession({ ...current, state: 'deleted', updatedAt: new Date().toISOString(), revision: current.revision + 1 }, database, current.state === 'active');
+  });
+}
+
+// Acknowledgements change only serverRevision: uploaded and in-flight deletions
+// remain recoverable, but a newer content revision or conflict blocks Undo.
+export async function restoreSession(original: Session, deletionRevision: number, database = db) {
+  return database.transaction('rw', database.sessions, database.outbox, database.conflicts, async () => {
+    const current = await database.sessions.get(original.id);
+    if (!current || current.state !== 'deleted' || current.revision !== deletionRevision || await database.conflicts.get(original.id))
+      throw new Error('Undo could not restore this charge because it changed. Review Account & sync and History.');
+    const active = original.state === 'active' ? await database.sessions.where('activeKey').equals('active').first() : undefined;
+    return writeSession({ ...original, state: active ? 'incomplete' : original.state,
+      revision: current.revision + 1, serverRevision: current.serverRevision, updatedAt: new Date().toISOString() }, database);
   });
 }

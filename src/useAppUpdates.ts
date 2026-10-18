@@ -36,7 +36,7 @@ export function useAppUpdates() {
     try {
       await registration.update();
       if (registration.waiting) setNeedRefresh(true);
-      if (manual) setMessage('Update check complete. Any available update appears at the top of the app.');
+      if (manual) setMessage(registration.waiting ? 'An app update is ready to install.' : 'Update check complete. You’ll be notified when an update is ready.');
     } catch { if (manual) setMessage('Could not check for updates. Try again when online.'); }
     finally { inFlight.current = false; setChecking(false); }
   }, [registration, setNeedRefresh]);

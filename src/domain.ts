@@ -24,7 +24,7 @@ export interface Mutation {
   upload?: { id: string; baseServerRevision: number; snapshot: Session };
 }
 export interface SyncConflict { sessionId: string; remote: Session | null; active: Session | null; reason: string }
-export interface CloudState { id: 'cloud'; enabled?: boolean; status?: 'idle' | 'syncing' | 'offline' | 'auth' | 'error' | 'conflict'; lastSuccessAt?: string; message?: string; leaseOwner?: string; leaseUntil?: number }
+export interface CloudState { id: 'cloud'; enabled?: boolean; status?: 'idle' | 'syncing' | 'offline' | 'auth' | 'error' | 'conflict'; lastSuccessAt?: string; lastAttemptAt?: number; message?: string; leaseOwner?: string; leaseUntil?: number; identity?: { email: string; verifiedAt: string } }
 export const defaults: Settings = { id: 'defaults', powerWatts: 9600, rateMicrosPerKwh: 203000 };
 export const MIN_SESSION_MS = 60_000;
 
@@ -91,11 +91,35 @@ export function summarize(sessions: Session[]) {
       energyKwh: total.energyKwh + result.energyKwh, costNumerator: total.costNumerator + result.costNumerator };
   }, { count: 0, durationMs: 0, energyKwh: 0, costNumerator: 0n });
 }
-export function periodGroups(sessions: Session[], yearly = false) {
+export function groupSessionsByStart(sessions: Session[], yearly = false) {
   const groups = new Map<string, Session[]>();
-  for (const session of sessions.filter(s => s.state === 'completed')) {
+  for (const session of sessions.filter(s => s.state !== 'deleted')) {
     const key = localInput(session.startAt).slice(0, yearly ? 4 : 7);
     groups.set(key, [...(groups.get(key) ?? []), session]);
   }
-  return [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([period, rows]) => ({ period, ...summarize(rows) }));
+  return [...groups].sort(([a], [b]) => b.localeCompare(a)).map(([period, rows]) => ({ period,
+    sessions: rows.sort((a, b) => Date.parse(b.startAt) - Date.parse(a.startAt)) }));
+}
+export function periodGroups(sessions: Session[], yearly = false) {
+  return groupSessionsByStart(sessions.filter(s => s.state === 'completed'), yearly)
+    .map(group => ({ ...group, ...summarize(group.sessions) }));
+}
+
+export function recentCharge(sessions: Session[], now = Date.now()) {
+  if (sessions.some(session => session.state === 'active')) return undefined;
+  return sessions.filter(session => session.state === 'completed' && session.endAt &&
+    now >= Date.parse(session.endAt) && now - Date.parse(session.endAt) < 12 * 3_600_000)
+    .sort((a, b) => Date.parse(b.endAt!) - Date.parse(a.endAt!))[0];
+}
+
+export function historyDate(iso: string, now = Date.now()) {
+  const { day, time } = sessionDateParts(iso, now);
+  return `${day}, ${time}`;
+}
+export function sessionDateParts(iso: string, now = Date.now(), grouped = false) {
+  const date = new Date(iso), today = new Date(now), yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const day = date.toDateString() === today.toDateString() ? 'Today' : date.toDateString() === yesterday.toDateString() ? 'Yesterday' :
+    date.toLocaleDateString('en-CA', { month: 'short', day: 'numeric', ...(!grouped && date.getFullYear() !== today.getFullYear() ? { year: 'numeric' } : {}) });
+  return { day, time: date.toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit' }) };
 }

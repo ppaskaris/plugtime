@@ -14,7 +14,7 @@ const complete = (db = source) => saveSession({ ...defaults, startAt: '2024-02-0
 const text = async (db = source) => JSON.stringify(await makeBackup(db));
 function cloud() {
   const rows = new Map<string, Session>(), receipts = new Map<string, Session>();
-  const api: SyncTransport = { configured: async () => true, snapshot: async () => [...rows.values()], upload: async (m: Upload) => {
+  const api: SyncTransport = { identity: async () => ({ email: 'owner@example.com' }), configured: async () => true, snapshot: async () => [...rows.values()], upload: async (m: Upload) => {
     const prior = receipts.get(m.id); if (prior) return { status: 200, session: prior };
     const current = rows.get(m.snapshot.id);
     if ((current?.serverRevision ?? 0) !== m.baseServerRevision) return { status: 409, remote: current ?? null, error: 'revision_conflict' };
